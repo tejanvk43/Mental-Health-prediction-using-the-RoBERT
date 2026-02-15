@@ -1,1 +1,8 @@
-.venv
+# Ignore everything by default
+*
+
+# Keep data folder and essential files
+!.gitignore
+!data/
+!README.md
+!requirements.txt
