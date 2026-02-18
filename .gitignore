@@ -1,7 +1,8 @@
 # Ignore everything by default
 *
 
-# Keep only essential files
+# Keep data folder and essential files
 !.gitignore
+!data/
 !README.md
 !requirements.txt

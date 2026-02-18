@@ -1,11 +1,10 @@
 torch
 transformers
+sentencepiece
 pandas
 numpy
 scikit-learn
 matplotlib
 seaborn
-nltk
 vaderSentiment
 tqdm
-imbalanced-learn
