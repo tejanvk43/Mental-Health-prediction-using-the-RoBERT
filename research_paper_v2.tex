@@ -1,0 +1,675 @@
+% ═══════════════════════════════════════════════════════════════════
+% Mental Health Text Classification Using Fine-Tuned RoBERTa-Large
+% with Focal Loss, Triple Pooling, and Temperature Scaling — V2
+% ═══════════════════════════════════════════════════════════════════
+\documentclass[conference, 10pt]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue,
+}
+
+\title{Mental Health Text Classification Using Fine-Tuned RoBERTa-Large\\with Focal Loss, Triple Pooling, and Temperature Scaling}
+
+\makeatletter
+\newcommand{\linebreakand}{%
+  \end{@IEEEauthorhalign}%
+  \hfill\mbox{}\par\mbox{}\hfill%
+  \begin{@IEEEauthorhalign}%
+}
+\makeatother
+
+\author{
+    \IEEEauthorblockN{Borra Khyathi Priyanshu\textsuperscript{1}}
+    \IEEEauthorblockA{Dept.\ of CSE (AI \& ML)\\
+    S R Gudlavalleru Engineering College\\
+    Gudlavalleru, India\\
+    khyathi008@gmail.com}
+    \and
+    \IEEEauthorblockN{Kolukula Gnana Sirisha\textsuperscript{2}}
+    \IEEEauthorblockA{Dept.\ of CSE (AI \& ML)\\
+    S R Gudlavalleru Engineering College\\
+    Gudlavalleru, India\\
+    sirishakolukula2004@gmail.com}
+    \and
+    \IEEEauthorblockN{Gonela Vaishnavi\textsuperscript{3}}
+    \IEEEauthorblockA{Dept.\ of CSE (AI \& ML)\\
+    S R Gudlavalleru Engineering College\\
+    Gudlavalleru, India\\
+    vyshugonela@gmail.com}
+    \linebreakand
+    \IEEEauthorblockN{Kare Amtih Josh\textsuperscript{4}}
+    \IEEEauthorblockA{Dept.\ of CSE (AI \& ML)\\
+    S R Gudlavalleru Engineering College\\
+    Gudlavalleru, India\\
+    karejosh4@gmail.com}
+    \and
+    \IEEEauthorblockN{Adilakshmi Yannam\textsuperscript{5}}
+    \IEEEauthorblockA{Head of Dept.\ of CSE (AI \& ML)\\
+    S R Gudlavalleru Engineering College\\
+    Gudlavalleru, India\\
+    laxmi072003@gmail.com}
+}
+
+\begin{document}
+
+\maketitle
+
+% ═══════════════════════════════════════════════════════════════
+% ABSTRACT
+% ═══════════════════════════════════════════════════════════════
+\begin{abstract}
+Mental health disorders represent a growing global concern, and early detection through natural language analysis holds significant promise for scalable screening. This paper presents a fine-tuned RoBERTa-large transformer model for multi-class mental health text classification, capable of categorizing text into seven classes: Normal, Depression, Suicidal, Anxiety, Bipolar, Stress, and Personality Disorder. We propose a classification pipeline that incorporates \textbf{(i)}~partial fine-tuning with layer-wise learning rate decay, \textbf{(ii)}~a triple pooling strategy combining CLS, mean, and max pooling for richer representations, \textbf{(iii)}~focal loss with label smoothing to address class imbalance, and \textbf{(iv)}~post-training temperature scaling for improved probability calibration. Trained on a dataset of 52,475 original samples augmented with 78,933 back-translated samples (120,913 total training instances), the model achieves a test accuracy of \textbf{95.58\%} and a macro F1-score of \textbf{93.48\%} across all seven classes. Notably, six of the seven classes exceed 92\% F1-score, with the majority classes (Normal, Depression, Suicidal) each surpassing 96\% F1. We also present an interactive Streamlit-based web application for real-time inference. Experimental results demonstrate that the combination of partial fine-tuning, triple pooling, focal loss, and extensive back-translation augmentation delivers robust performance on this highly imbalanced mental health dataset.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Natural Language Processing, Mental Health, Text Classification, RoBERTa, Transformer, Focal Loss, Transfer Learning, Deep Learning
+\end{IEEEkeywords}
+
+% ═══════════════════════════════════════════════════════════════
+% I. INTRODUCTION
+% ═══════════════════════════════════════════════════════════════
+\section{Introduction}
+
+Mental health disorders affect approximately one in eight people worldwide, according to the World Health Organization (WHO)~\cite{who2022}. Depression, anxiety, bipolar disorder, and suicidal ideation remain among the most prevalent conditions, yet access to timely diagnosis and treatment continues to be a significant challenge, particularly in resource-constrained settings. The proliferation of digital communication platforms—including social media, online forums, and messaging services—has created opportunities for automated screening systems that analyze textual expressions for mental health indicators~\cite{calvo2017natural}.
+
+Natural Language Processing (NLP) has emerged as a powerful tool for mental health analysis. Early approaches relied on hand-crafted lexical features and traditional machine learning classifiers such as Support Vector Machines and Random Forests~\cite{coppersmith2015clpsych}. The advent of pre-trained transformer models—BERT~\cite{devlin2019bert}, RoBERTa~\cite{liu2019roberta}, and their variants—has dramatically improved performance on text classification tasks by capturing deep contextual relationships within language.
+
+However, deploying transformer models for mental health classification presents unique challenges:
+\begin{itemize}[noitemsep]
+    \item \textbf{Class imbalance}: Mental health datasets are inherently imbalanced, with overrepresentation of common conditions and underrepresentation of disorders like personality disorder.
+    \item \textbf{Overfitting risk}: Large models (355M+ parameters) are prone to overfitting on moderately-sized datasets.
+    \item \textbf{Overconfidence}: Standard softmax probabilities are often poorly calibrated, producing overconfident predictions.
+    \item \textbf{Subtle distinctions}: Overlapping symptoms across mental health conditions make multi-class discrimination challenging.
+\end{itemize}
+
+To address these challenges, this paper proposes a comprehensive classification pipeline that fine-tunes RoBERTa-large with several key innovations:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Partial fine-tuning} with layer-wise learning rate decay ($\gamma = 0.9$) to prevent catastrophic forgetting of pre-trained knowledge while adapting to the mental health domain.
+    \item \textbf{Triple pooling} (CLS + mean + max) to create a 3,072-dimensional representation that captures complementary aspects of the input text.
+    \item \textbf{Focal loss} with class weighting and label smoothing to handle severe class imbalance and prevent overconfident predictions.
+    \item \textbf{Temperature scaling} as a post-training calibration step to improve probability reliability.
+    \item \textbf{Back-translation augmentation} for minority and critical classes to enrich training data diversity.
+\end{enumerate}
+
+The resulting model achieves \textbf{95.58\%} accuracy and \textbf{93.48\%} macro F1-score on a held-out test set of 5,248 samples spanning seven mental health categories. An interactive web application built with Streamlit provides real-time inference, batch analysis, and model interpretability features.
+
+The remainder of this paper is organized as follows: Section~II reviews related work. Section~III details the proposed methodology. Section~IV describes the experimental setup. Section~V presents and analyzes results. Section~VI discusses the deployed application. Section~VII covers limitations and ethical considerations, and Section~VIII concludes the paper.
+
+
+% ═══════════════════════════════════════════════════════════════
+% II. RELATED WORK
+% ═══════════════════════════════════════════════════════════════
+\section{Related Work}
+
+\subsection{NLP for Mental Health Detection}
+
+The intersection of NLP and mental health has attracted significant research interest. Early work by Coppersmith et al.~\cite{coppersmith2015clpsych} demonstrated that linguistic signals in social media posts correlate with mental health conditions. De Choudhury et al.~\cite{dechoudhury2013predicting} used behavioral attributes from Twitter to predict depression onset. These initial studies relied on bag-of-words features, TF-IDF, and LIWC (Linguistic Inquiry and Word Count) features combined with traditional classifiers.
+
+The CLPsych shared tasks~\cite{zirikly2019clpsych} established benchmarks for assessing suicide risk from Reddit posts, spurring development of more sophisticated NLP approaches. Matero et al.~\cite{matero2019suicide} achieved strong performance using contextual embeddings from BERT, demonstrating the superiority of transformer-based approaches.
+
+\subsection{Pre-trained Language Models}
+
+BERT~\cite{devlin2019bert} introduced bidirectional pre-training for language representations, achieving state-of-the-art performance across NLP benchmarks. RoBERTa~\cite{liu2019roberta} improved upon BERT through optimized pre-training—dynamic masking, larger batch sizes, and more training data—resulting in superior downstream task performance. For mental health applications, Ji et al.~\cite{ji2022mentalbert} introduced MentalBERT, pre-trained on mental health forum data, showing domain-specific pre-training can further improve classification.
+
+\subsection{Handling Class Imbalance}
+
+Class imbalance is a persistent challenge in mental health classification. Traditional oversampling (SMOTE) and undersampling methods have limited effectiveness for high-dimensional text representations. Lin et al.~\cite{lin2017focal} proposed focal loss for object detection, which has since been adapted for text classification to down-weight easy examples and focus learning on hard cases. Combined with class-frequency-based weighting, focal loss provides a principled approach to imbalanced classification~\cite{cui2019class}.
+
+\subsection{Pooling Strategies}
+
+Standard transformer-based classifiers typically use the CLS token representation. However, recent work~\cite{reimers2019sentencebert} demonstrated that mean pooling over all token representations often outperforms CLS-only approaches for sentence-level tasks. Our work extends this by concatenating CLS, mean, and max pooling to form a richer representation, an approach inspired by successful applications in natural language inference~\cite{conneau2017supervised}.
+
+\subsection{Data Augmentation for NLP}
+
+Data augmentation has been widely adopted to improve model robustness and address data scarcity. Back-translation~\cite{sennrich2016improving}—translating text to an intermediate language and back—introduces lexical and syntactic diversity while preserving semantic content. Xie et al.~\cite{xie2020unsupervised} demonstrated that data augmentation combined with semi-supervised learning significantly improves text classification. In the mental health domain, augmentation is particularly valuable for enriching underrepresented classes without introducing annotation noise.
+
+
+% ═══════════════════════════════════════════════════════════════
+% III. METHODOLOGY
+% ═══════════════════════════════════════════════════════════════
+\section{Methodology}
+
+\subsection{Problem Formulation}
+
+Given a text input $\mathbf{x} = (x_1, x_2, \ldots, x_n)$, the goal is to predict the mental health category $y \in \{1, 2, \ldots, 7\}$ corresponding to: Normal, Depression, Suicidal, Anxiety, Bipolar, Stress, and Personality Disorder. The model outputs a probability distribution $\hat{p}(y|\mathbf{x}) \in \mathbb{R}^7$ obtained via temperature-scaled softmax.
+
+\subsection{Architecture Overview}
+
+The proposed architecture consists of four major components, illustrated in Figure~\ref{fig:architecture}:
+
+\begin{figure*}[!t]
+    \centering
+    \includegraphics[width=0.75\textwidth]{architecture1.png}
+    \caption{End-to-end model architecture: Input text is tokenized, processed through a partially fine-tuned RoBERTa-large encoder, aggregated via triple pooling, and classified through a three-layer head with temperature-scaled softmax output.}
+    \label{fig:architecture}
+\end{figure*}
+
+\subsubsection{Tokenization}
+Input text is tokenized using RoBERTa's Byte-Pair Encoding (BPE) tokenizer with a maximum sequence length of 256 tokens. Sequences are padded or truncated to produce fixed-size tensors of input IDs and attention masks.
+
+\subsubsection{Encoder — RoBERTa-large}
+The encoder is a 24-layer RoBERTa-large transformer with a hidden dimension of 1,024 and approximately 355 million parameters. The native pooling layer is removed (\texttt{add\_pooling\_layer=False}) to eliminate $\sim$2M unused parameters from the optimizer. To balance knowledge retention and task adaptation:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Layers 0--13 (14 layers)}: Frozen — preserves general linguistic knowledge.
+    \item \textbf{Layers 14--23 (10 layers)}: Trainable — adapts to mental health domain.
+    \item \textbf{Embedding layer}: Frozen — tokenization-level representations are kept intact.
+\end{itemize}
+
+This partial fine-tuning strategy reduces trainable parameters to approximately 127.6M (35.8\% of total), significantly mitigating overfitting risk.
+
+\subsubsection{Triple Pooling}
+Instead of using only the CLS token, we concatenate three complementary pooling operations on the final hidden states $\mathbf{H} \in \mathbb{R}^{n \times 1024}$:
+
+\begin{align}
+    \mathbf{v}_{\text{CLS}} &= \mathbf{H}[0] \in \mathbb{R}^{1024} \label{eq:cls} \\
+    \mathbf{v}_{\text{mean}} &= \frac{\sum_{i=1}^{n} m_i \cdot \mathbf{H}[i]}{\sum_{i=1}^{n} m_i} \in \mathbb{R}^{1024} \label{eq:mean} \\
+    \mathbf{v}_{\text{max}} &= \max_{i: m_i = 1} \mathbf{H}[i] \in \mathbb{R}^{1024} \label{eq:max} \\
+    \mathbf{v}_{\text{pool}} &= [\mathbf{v}_{\text{CLS}}; \mathbf{v}_{\text{mean}}; \mathbf{v}_{\text{max}}] \in \mathbb{R}^{3072} \label{eq:concat}
+\end{align}
+
+where $m_i$ is the attention mask for token $i$. This 3,072-dimensional vector captures the overall sentence representation (CLS), average semantics (mean), and the most salient features (max). Numerically stable clamping ($\epsilon = 10^{-9}$) is applied in the mean pool denominator, and a large negative sentinel ($-10^{4}$) masks padding tokens during max pooling.
+
+\subsubsection{Classification Head}
+
+The pooled representation is passed through a three-layer classification head:
+
+\begin{equation}
+\begin{aligned}
+    \mathbf{z}_1 &= \text{Dropout}_{0.30}(\text{GELU}(\mathbf{W}_1 \cdot \text{LayerNorm}(\mathbf{v}_{\text{pool}}) + \mathbf{b}_1)) \\
+    \mathbf{z}_2 &= \text{Dropout}_{0.15}(\text{GELU}(\mathbf{W}_2 \cdot \mathbf{z}_1 + \mathbf{b}_2)) \\
+    \hat{\mathbf{y}} &= \mathbf{W}_3 \cdot \mathbf{z}_2 + \mathbf{b}_3
+\end{aligned}
+\end{equation}
+
+where $\mathbf{W}_1 \in \mathbb{R}^{512 \times 3072}$, $\mathbf{W}_2 \in \mathbb{R}^{128 \times 512}$, $\mathbf{W}_3 \in \mathbb{R}^{7 \times 128}$. GELU activation~\cite{hendrycks2016gelu} and progressive dropout (0.30 $\to$ 0.15) provide non-linearity and regularization. LayerNorm before the first projection stabilizes the concatenated triple-pooled representation.
+
+\subsection{Loss Function — Focal Loss with Label Smoothing}
+
+To address class imbalance, we employ focal loss~\cite{lin2017focal} with class-frequency weighting and label smoothing:
+
+\begin{equation}
+    \mathcal{L}_{\text{focal}} = -\frac{1}{N} \sum_{i=1}^{N} \alpha_{y_i} \cdot (1 - p_{t,i})^{\gamma} \cdot \text{CE}_{\text{smooth}}(\hat{\mathbf{y}}_i, y_i)
+    \label{eq:focal}
+\end{equation}
+
+where:
+\begin{itemize}[noitemsep]
+    \item $p_{t,i}$ is the predicted probability for the true class
+    \item $\gamma = 2.0$ is the focusing parameter that down-weights easy examples
+    \item $\alpha_{y_i} = \sqrt{1/f_{y_i}}$ is the class weight based on inverse square root frequency, normalized so that $\sum \alpha_c = C$
+    \item $\text{CE}_{\text{smooth}}$ applies label smoothing with $\epsilon = 0.05$
+\end{itemize}
+
+The smoothed target distribution is:
+\begin{equation}
+    q_c = \begin{cases}
+        1 - \epsilon & \text{if } c = y \\
+        \frac{\epsilon}{C - 1} & \text{otherwise}
+    \end{cases}
+\end{equation}
+
+The focal term $(1 - p_t)^\gamma$ with $\gamma = 2.0$ ensures that well-classified examples contribute negligibly to the loss, while hard or misclassified examples receive proportionally larger gradients. Combined with the inverse square root class weighting, this dual mechanism effectively addresses the 15:1 imbalance ratio in the dataset.
+
+\subsection{Optimization Strategy}
+
+\subsubsection{Layer-wise Learning Rate Decay}
+Different learning rates are assigned to each trainable transformer layer. The top layer (layer 23) receives the base learning rate $\eta_{\text{bert}} = 2 \times 10^{-5}$. Each layer below is scaled by a decay factor $\gamma = 0.9$:
+
+\begin{equation}
+    \eta_{\ell} = \eta_{\text{bert}} \cdot \gamma^{(L - 1 - \ell)}
+    \label{eq:lrdecay}
+\end{equation}
+
+where $\ell$ is the layer index among the $L = 10$ trainable layers. The classification head uses a separate, higher learning rate $\eta_{\text{head}} = 1 \times 10^{-4}$, providing the randomly initialized head with faster convergence while the pre-trained encoder layers are updated more conservatively.
+
+\subsubsection{Training Procedure}
+\begin{itemize}[noitemsep]
+    \item \textbf{Optimizer}: AdamW with weight decay $\lambda = 0.02$
+    \item \textbf{Scheduler}: Cosine annealing with 6\% linear warmup
+    \item \textbf{Gradient accumulation}: 4 steps (effective batch size = 64)
+    \item \textbf{Mixed precision}: FP16 via \texttt{GradScaler} for memory efficiency on GPU
+    \item \textbf{Gradient clipping}: Max norm = 1.0
+    \item \textbf{Early stopping}: Patience of 5 epochs on validation macro F1
+    \item \textbf{Maximum epochs}: 20
+\end{itemize}
+
+\subsection{Post-training Temperature Scaling}
+
+After training, we apply temperature scaling~\cite{guo2017calibration} to improve probability calibration. A scalar temperature $T$ is found by grid search over $T \in [0.5, 3.0]$ with step 0.05, maximizing validation macro F1:
+
+\begin{equation}
+    \hat{p}(y|\mathbf{x}) = \text{softmax}\left(\frac{\hat{\mathbf{y}}}{T}\right)
+    \label{eq:temp}
+\end{equation}
+
+Temperature scaling preserves the model's ranking of classes while adjusting confidence levels. Using a single scalar avoids the overfitting risk of per-class threshold tuning, making predictions more reliable for downstream decision-making.
+
+
+% ═══════════════════════════════════════════════════════════════
+% IV. EXPERIMENTAL SETUP
+% ═══════════════════════════════════════════════════════════════
+\section{Experimental Setup}
+
+\subsection{Dataset}
+
+We use the \textit{Sentiment Analysis for Mental Health} dataset from Kaggle~\cite{sarkar2023dataset}. After filtering texts with a minimum length of 8 characters, the dataset comprises 52,475 text samples across seven mental health categories. Table~\ref{tab:dataset} presents the class distribution.
+
+\begin{table}[t]
+    \centering
+    \caption{Dataset Class Distribution (After Filtering)}
+    \label{tab:dataset}
+    \begin{tabular}{lrr}
+        \toprule
+        \textbf{Class} & \textbf{Samples} & \textbf{Percentage} \\
+        \midrule
+        Normal               & $\sim$16,150 & 30.78\% \\
+        Depression           & $\sim$15,400 & 29.35\% \\
+        Suicidal             & $\sim$10,650 & 20.30\% \\
+        Anxiety              &  $\sim$3,840 &  7.32\% \\
+        Bipolar              &  $\sim$2,780 &  5.30\% \\
+        Stress               &  $\sim$2,590 &  4.94\% \\
+        Personality Disorder &  $\sim$1,070 &  2.04\% \\
+        \midrule
+        \textbf{Total}       & \textbf{52,475} & \textbf{100\%} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The dataset exhibits significant class imbalance, with approximately a 15:1 ratio between the largest (Normal) and smallest (Personality Disorder) classes. Texts are sourced from social media posts and online mental health forums.
+
+\subsection{Data Augmentation}
+
+To enrich the training data, we apply back-translation augmentation, generating 78,933 augmented samples targeting three critical classes: Depression, Suicidal, and Personality Disorder. Table~\ref{tab:augmented} presents the training set label distribution after augmentation.
+
+\begin{table}[t]
+    \centering
+    \caption{Training Set Label Distribution (After Augmentation)}
+    \label{tab:augmented}
+    \begin{tabular}{lr}
+        \toprule
+        \textbf{Class} & \textbf{Training Samples} \\
+        \midrule
+        Depression           & 57,086 \\
+        Suicidal             & 40,015 \\
+        Normal               & 12,922 \\
+        Personality Disorder &  3,531 \\
+        Anxiety              &  3,070 \\
+        Bipolar              &  2,221 \\
+        Stress               &  2,068 \\
+        \midrule
+        \textbf{Total}       & \textbf{120,913} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Back-translation was performed by translating English text to an intermediate language and translating back, introducing lexical and syntactic diversity while preserving the original semantic content. Augmented data is used \textbf{only for training}; validation and test sets contain exclusively original samples to prevent near-duplicate leakage.
+
+\subsection{Data Splitting}
+
+The original dataset is split with stratified sampling:
+\begin{itemize}[noitemsep]
+    \item \textbf{Training set}: 80\% of original data + all augmented data = 120,913 samples
+    \item \textbf{Validation set}: 10\% of original data = 5,247 samples
+    \item \textbf{Test set}: 10\% of original data = 5,248 samples
+\end{itemize}
+
+A fixed random seed (42) ensures reproducibility. The training set is shuffled after concatenation with augmented data to prevent ordering bias.
+
+\subsection{Implementation Details}
+
+The model is implemented in PyTorch with the Hugging Face Transformers library. Training was conducted on an NVIDIA Tesla T4 GPU with 15.8 GB VRAM. Total training time was approximately 750.8 minutes ($\sim$12.5 hours) over 20 epochs with 7,558 steps per epoch. Key hyperparameters are summarized in Table~\ref{tab:hyperparams}.
+
+\begin{table}[t]
+    \centering
+    \caption{Hyperparameter Configuration}
+    \label{tab:hyperparams}
+    \begin{tabular}{lr}
+        \toprule
+        \textbf{Hyperparameter} & \textbf{Value} \\
+        \midrule
+        Pre-trained model       & RoBERTa-large \\
+        Max sequence length     & 256 \\
+        Batch size              & 16 \\
+        Gradient accumulation   & 4 (eff. 64) \\
+        Encoder LR ($\eta_{\text{bert}}$) & $2 \times 10^{-5}$ \\
+        Head LR ($\eta_{\text{head}}$)    & $1 \times 10^{-4}$ \\
+        LR decay ($\gamma$)     & 0.90 \\
+        Weight decay ($\lambda$)& 0.02 \\
+        Dropout                 & 0.30 / 0.15 \\
+        Focal $\gamma$          & 2.0 \\
+        Label smoothing $\epsilon$ & 0.05 \\
+        Trainable layers        & 10 / 24 \\
+        Warmup ratio            & 6\% \\
+        Max epochs              & 20 \\
+        Early stopping patience & 5 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+% ═══════════════════════════════════════════════════════════════
+% V. RESULTS AND ANALYSIS
+% ═══════════════════════════════════════════════════════════════
+\section{Results and Analysis}
+
+\subsection{Training Dynamics}
+
+Table~\ref{tab:training} presents the epoch-by-epoch training progression. The model was trained for all 20 epochs, with the best model selected at epoch 19 based on validation macro F1. Validation accuracy improved from 80.48\% (epoch~1) to 95.79\% (epoch~19).
+
+\begin{table}[t]
+    \centering
+    \caption{Training History per Epoch}
+    \label{tab:training}
+    \resizebox{\columnwidth}{!}{
+    \begin{tabular}{ccccccc}
+        \toprule
+        \textbf{Ep.} & \textbf{Tr Loss} & \textbf{Tr Acc} & \textbf{Val Acc} & \textbf{Tr F1} & \textbf{Val F1} & \textbf{Gap} \\
+        \midrule
+        1  & 0.2575 & 64.79\% & 80.48\% & 57.35\% & 77.95\% & $-$15.7\% \\
+        2  & 0.1170 & 76.48\% & 83.80\% & 77.63\% & 82.46\% & $-$7.3\% \\
+        3  & 0.0848 & 79.82\% & 85.36\% & 83.80\% & 84.67\% & $-$5.5\% \\
+        4  & 0.0670 & 82.06\% & 86.79\% & 87.42\% & 86.68\% & $-$4.7\% \\
+        5  & 0.0536 & 84.02\% & 86.85\% & 89.95\% & 86.87\% & $-$2.8\% \\
+        6  & 0.0447 & 86.34\% & 89.23\% & 92.18\% & 88.85\% & $-$2.9\% \\
+        7  & 0.0364 & 88.78\% & 90.20\% & 93.91\% & 89.44\% & $-$1.4\% \\
+        8  & 0.0279 & 91.84\% & 92.34\% & 95.69\% & 90.90\% & $-$0.5\% \\
+        9  & 0.0209 & 94.34\% & 93.23\% & 96.86\% & 91.57\% & +1.1\% \\
+        10 & 0.0150 & 96.06\% & 93.67\% & 97.89\% & 91.62\% & +2.4\% \\
+        11 & 0.0110 & 97.39\% & 94.61\% & 98.54\% & 92.17\% & +2.8\% \\
+        12 & 0.0077 & 98.12\% & 94.66\% & 98.97\% & 92.86\% & +3.5\% \\
+        13 & 0.0060 & 98.66\% & 95.03\% & 99.27\% & 93.07\% & +3.6\% \\
+        14 & 0.0049 & 98.90\% & 95.29\% & 99.37\% & 93.24\% & +3.6\% \\
+        15 & 0.0038 & 99.21\% & 95.43\% & 99.51\% & 93.32\% & +3.8\% \\
+        16 & 0.0029 & 99.37\% & 95.52\% & 99.63\% & 93.34\% & +3.9\% \\
+        17 & 0.0024 & 99.47\% & 95.54\% & 99.69\% & 93.30\% & +3.9\% \\
+        18 & 0.0022 & 99.57\% & 95.65\% & 99.73\% & 93.57\% & +3.9\% \\
+        \textbf{19} & \textbf{0.0020} & \textbf{99.63\%} & \textbf{95.79\%} & \textbf{99.73\%} & \textbf{93.80\%} & \textbf{+3.8\%} \\
+        20 & 0.0018 & 99.62\% & 95.77\% & 99.74\% & 93.75\% & +3.8\% \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+Several observations are noteworthy:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Underfitting to convergence}: In epochs 1--8, the train-validation accuracy gap is negative (validation outperforms training), a phenomenon attributable to dropout regularization and augmented data noise in the training set. The crossover occurs at epoch~9 as the model begins to memorize training examples.
+    \item \textbf{Controlled overfitting}: The final train-val accuracy gap stabilizes near 3.8\%, well below the 8\% threshold commonly used to indicate problematic overfitting. This validates the effectiveness of partial fine-tuning, dropout, and focal loss regularization.
+    \item \textbf{Steady F1 improvement}: Validation macro F1 improves consistently from 77.95\% to 93.80\%, indicating balanced learning across all classes despite the augmentation-induced training set imbalance.
+    \item \textbf{Extended training benefit}: Unlike many fine-tuning setups that converge in 3--5 epochs, the model continues to improve meaningfully up to epoch~19, suggesting that the large augmented training set (120,913 samples) provides sufficient diversity to sustain learning.
+    \item \textbf{Validation loss divergence}: While validation accuracy and F1 continue to improve, validation loss plateaus around 0.13--0.15, indicating that the model becomes increasingly confident in its correct predictions while the focal loss mechanism appropriately penalizes remaining errors.
+\end{itemize}
+
+\subsection{Test Set Performance}
+
+On the held-out test set (5,248 original samples), the model achieves:
+
+\begin{table}[H]
+    \centering
+    \caption{Final Test Set Results}
+    \label{tab:test}
+    \begin{tabular}{lr}
+        \toprule
+        \textbf{Metric} & \textbf{Score} \\
+        \midrule
+        Accuracy        & 95.58\% \\
+        Macro F1        & 93.48\% \\
+        Weighted F1     & 95.59\% \\
+        Temperature $T$ & 1.00 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The close agreement between macro F1 (93.48\%) and weighted F1 (95.59\%) indicates strong performance across both majority and minority classes, with the 2.11\% gap reflecting slightly lower minority-class performance balanced by the weighting. The optimal temperature was found to be $T = 1.0$, indicating that the model's probability calibration is already well-tuned—a likely result of the combined effect of focal loss and label smoothing during training.
+
+\subsection{Per-class Analysis}
+
+Table~\ref{tab:perclass} presents the detailed per-class classification results on the test set.
+
+\begin{table}[t]
+    \centering
+    \caption{Per-class Test Set Performance}
+    \label{tab:perclass}
+    \resizebox{\columnwidth}{!}{
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+        \midrule
+        Anxiety              & 0.9271 & 0.9271 & 0.9271 &   384 \\
+        Bipolar              & 0.9440 & 0.9101 & 0.9267 &   278 \\
+        Depression           & 0.9580 & 0.9766 & 0.9672 & 1,540 \\
+        Normal               & 0.9853 & 0.9529 & 0.9688 & 1,615 \\
+        Personality Disorder & 0.9369 & 0.9720 & 0.9541 &   107 \\
+        Stress               & 0.8172 & 0.8456 & 0.8311 &   259 \\
+        Suicidal             & 0.9594 & 0.9775 & 0.9684 & 1,065 \\
+        \midrule
+        \textbf{Macro avg}   & 0.9326 & 0.9374 & \textbf{0.9348} & 5,248 \\
+        \textbf{Weighted avg}& 0.9563 & 0.9558 & \textbf{0.9559} & 5,248 \\
+        \bottomrule
+    \end{tabular}
+    }
+\end{table}
+
+Several notable patterns emerge from the per-class results:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{High-performing majority classes}: Normal (F1=96.88\%), Depression (F1=96.72\%), and Suicidal (F1=96.84\%) all exceed 96\% F1, benefiting from ample training data and distinctive linguistic markers.
+    \item \textbf{Strong minority class performance}: Despite having only 107 test samples, Personality Disorder achieves 95.41\% F1 with 97.20\% recall, demonstrating the effectiveness of back-translation augmentation (which increased its training samples from $\sim$856 to 3,531).
+    \item \textbf{Stress as the hardest class}: Stress achieves the lowest F1 at 83.11\%, primarily due to lower precision (81.72\%). This is expected, as stress-related language overlaps significantly with anxiety (worry, overwhelm) and depression (exhaustion, hopelessness).
+    \item \textbf{Precision-recall balance}: Most classes exhibit well-balanced precision and recall, with the largest gap being 3.39\% for Bipolar (precision 94.40\% vs recall 91.01\%), suggesting slight underdetection of bipolar-related content.
+\end{itemize}
+
+The confusion patterns reveal expected clinical overlaps:
+\begin{itemize}[noitemsep]
+    \item \textbf{Stress $\leftrightarrow$ Anxiety}: Worry-related language and descriptions of overwhelm appear in both categories.
+    \item \textbf{Depression $\leftrightarrow$ Suicidal}: These conditions share linguistic markers of hopelessness and despair, though the model achieves strong discrimination with both exceeding 96\% F1.
+    \item \textbf{Bipolar $\leftrightarrow$ Depression}: The depressive phase of bipolar disorder produces language similar to clinical depression, contributing to Bipolar's slightly lower recall.
+\end{itemize}
+
+\subsection{Parameter Efficiency}
+
+Table~\ref{tab:params} presents the parameter distribution of the model. By freezing 64.2\% of parameters, we reduce computational costs and regularize effectively.
+
+\begin{table}[t]
+    \centering
+    \caption{Parameter Distribution}
+    \label{tab:params}
+    \begin{tabular}{lrr}
+        \toprule
+        \textbf{Component} & \textbf{Parameters} & \textbf{Trainable} \\
+        \midrule
+        Embedding layer            & $\sim$2M    & No \\
+        Frozen encoder (0--13)     & $\sim$226M  & No \\
+        Trainable encoder (14--23) & $\sim$126M  & Yes \\
+        Classification head        & $\sim$1.6M  & Yes \\
+        \midrule
+        \textbf{Total}             & $\sim$\textbf{356.0M} & \textbf{127.6M (35.8\%)} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Training Efficiency}
+
+The model was trained on a single NVIDIA Tesla T4 GPU (15.8 GB VRAM). FP16 mixed precision training via PyTorch's \texttt{GradScaler} enabled fitting the 355M-parameter model within the 16 GB memory budget. Table~\ref{tab:efficiency} summarizes the computational requirements.
+
+\begin{table}[t]
+    \centering
+    \caption{Training Computational Requirements}
+    \label{tab:efficiency}
+    \begin{tabular}{lr}
+        \toprule
+        \textbf{Metric} & \textbf{Value} \\
+        \midrule
+        GPU                    & NVIDIA Tesla T4 \\
+        VRAM                   & 15.8 GB \\
+        Training time          & 750.8 min ($\sim$12.5 hrs) \\
+        Epochs completed       & 20 \\
+        Steps per epoch        & 7,558 \\
+        Time per epoch         & $\sim$37.5 min \\
+        Effective batch size   & 64 \\
+        Model checkpoint size  & 1,424 MB \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+
+% ═══════════════════════════════════════════════════════════════
+% VI. DEPLOYED APPLICATION
+% ═══════════════════════════════════════════════════════════════
+\section{Deployed Application}
+
+To facilitate practical use and demonstration, we developed an interactive web application using Streamlit. The application provides five functional modules:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Single Text Classification}: Users input text and receive predicted class, confidence score, and a probability distribution chart across all seven classes. Crisis resources are automatically displayed when suicidal content is detected (confidence $> 0.3$).
+    \item \textbf{Batch Analysis}: Supports CSV upload or multi-line input for analyzing up to 500 texts simultaneously, with aggregate statistics, distribution visualizations, confidence histograms, and downloadable results.
+    \item \textbf{Training Insights}: Interactive visualization of training curves (accuracy, F1, loss, overfitting gap) using Altair charts, with full epoch-by-epoch training log.
+    \item \textbf{Architecture Explorer}: Visual representation of the model pipeline with detailed explanations of design decisions, including parameter distribution tables.
+    \item \textbf{About}: Comprehensive project documentation including methodology, dataset information, results summary, and ethical considerations.
+\end{enumerate}
+
+The application features a dark/light theme toggle, runs entirely locally (no data is transmitted externally), and performs inference on CPU for deployment accessibility. The interface provides three-tier confidence interpretation (high $\geq 85\%$, moderate $\geq 60\%$, low $< 60\%$) to help users understand prediction reliability.
+
+
+% ═══════════════════════════════════════════════════════════════
+% VII. LIMITATIONS AND ETHICAL CONSIDERATIONS
+% ═══════════════════════════════════════════════════════════════
+\section{Limitations and Ethical Considerations}
+
+\subsection{Limitations}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Dataset bias}: The training data is sourced primarily from English-language social media, which may not generalize to clinical settings, other languages, or cultural contexts.
+    \item \textbf{Label overlap}: Comorbidities (e.g., depression with anxiety) are common in mental health but the dataset assumes single-label classification. The relatively lower Stress class F1~(83.11\%) reflects this limitation.
+    \item \textbf{Temporal context}: The model analyzes individual text snippets without access to conversation history or longitudinal patterns.
+    \item \textbf{Model size}: At 356M parameters and a 1.4~GB checkpoint, the model requires significant computational resources, potentially limiting deployment on edge devices.
+    \item \textbf{Augmentation bias}: Heavy back-translation augmentation for Depression (57,086 training samples) and Suicidal (40,015) classes may introduce translation artifacts and over-representation bias in the training distribution.
+    \item \textbf{Overfitting on augmented data}: While the train-val gap remains controlled (3.8\%), training accuracy reaches 99.63\%, suggesting the model has memorized much of the augmented training set.
+\end{itemize}
+
+\subsection{Ethical Considerations}
+
+This system is designed as a \textbf{research and educational tool only}. It is explicitly \textbf{not} intended to replace professional mental health assessment. Key ethical safeguards include:
+
+\begin{itemize}[noitemsep]
+    \item Clear disclaimers throughout the application interface
+    \item Automatic provision of crisis hotline resources (including national and international helplines) when suicidal ideation is detected
+    \item Local-only processing — no user data is stored or transmitted
+    \item Transparent reporting of model confidence with three-tier interpretation to avoid false certainty
+    \item Per-class probability distribution displayed alongside predictions
+\end{itemize}
+
+Mental health classification models carry inherent risks of misclassification. False negatives (failing to detect a condition) could lead to delayed intervention, while false positives may cause unnecessary alarm. Deployment in any clinical or screening context would require extensive validation, regulatory approval, and integration with human oversight.
+
+
+% ═══════════════════════════════════════════════════════════════
+% VIII. CONCLUSION AND FUTURE WORK
+% ═══════════════════════════════════════════════════════════════
+\section{Conclusion and Future Work}
+
+This paper presented a comprehensive pipeline for multi-class mental health text classification using a fine-tuned RoBERTa-large model. The combination of partial fine-tuning, triple pooling, focal loss with label smoothing, temperature scaling, and extensive back-translation augmentation achieves a test accuracy of \textbf{95.58\%} and macro F1-score of \textbf{93.48\%} across seven mental health categories. Six of the seven classes exceed 92\% F1-score, with Personality Disorder achieving 95.41\% F1 despite comprising only 2\% of the original dataset.
+
+Key contributions include:
+\begin{itemize}[noitemsep]
+    \item A triple pooling mechanism (CLS + mean + max) that provides richer 3,072-dimensional text representations than standard CLS-only approaches.
+    \item A training strategy combining focal loss ($\gamma = 2.0$), inverse square root class weighting, and label smoothing ($\epsilon = 0.05$) that effectively handles 15:1 class imbalance.
+    \item Partial fine-tuning with layer-wise LR decay ($\gamma = 0.9$) that reduces trainable parameters to 35.8\% of total while achieving 95.58\% test accuracy.
+    \item Extensive back-translation data augmentation (78,933 synthetic samples) that significantly boosts minority class performance, notably achieving 95.41\% F1 for Personality Disorder.
+    \item An interactive Streamlit web application with single-text classification, batch analysis, training visualization, and built-in crisis resource provision.
+\end{itemize}
+
+Future work may explore:
+\begin{itemize}[noitemsep]
+    \item \textbf{Multi-label classification} to capture comorbid conditions and address the label overlap limitation.
+    \item \textbf{Explainability} via attention visualization and SHAP values to identify which text segments drive predictions.
+    \item \textbf{Multilingual extension} by fine-tuning XLM-RoBERTa for cross-lingual mental health classification.
+    \item \textbf{Lightweight deployment} through knowledge distillation to a smaller model (e.g., DistilRoBERTa) for mobile and edge inference.
+    \item \textbf{Longitudinal analysis} by incorporating temporal context from conversation histories.
+    \item \textbf{Domain-specific pre-training} using MentalBERT-style continued pre-training on mental health corpora.
+    \item \textbf{Stress class improvement} through targeted augmentation and feature engineering to better distinguish stress from anxiety and depression.
+\end{itemize}
+
+
+% ═══════════════════════════════════════════════════════════════
+% REFERENCES
+% ═══════════════════════════════════════════════════════════════
+\begin{thebibliography}{99}
+
+\bibitem{who2022}
+World Health Organization, ``Mental disorders,'' \textit{WHO Fact Sheets}, June 2022. [Online]. Available: \url{https://www.who.int/news-room/fact-sheets/detail/mental-disorders}
+
+\bibitem{calvo2017natural}
+R.~A. Calvo, D.~N. Milne, M.~S. Hussain, and H. Christensen, ``Natural language processing in mental health applications using non-clinical texts,'' \textit{Natural Language Engineering}, vol.~23, no.~5, pp.~649--685, 2017.
+
+\bibitem{coppersmith2015clpsych}
+G.~Coppersmith, M.~Dredze, C.~Harman, and K.~Hollingshead, ``From ADHD to SAD: Analyzing the language of mental health on Twitter through self-reported diagnoses,'' in \textit{Proc. 2nd Workshop on Computational Linguistics and Clinical Psychology (CLPsych)}, 2015, pp.~1--10.
+
+\bibitem{dechoudhury2013predicting}
+M.~De~Choudhury, M.~Gamon, S.~Counts, and E.~Horvitz, ``Predicting depression via social media,'' in \textit{Proc. 7th International AAAI Conference on Weblogs and Social Media (ICWSM)}, 2013, pp.~128--137.
+
+\bibitem{zirikly2019clpsych}
+A.~Zirikly, P.~Resnik, O.~Uzuner, and K.~Hollingshead, ``CLPsych 2019 shared task: Predicting the degree of suicide risk in Reddit posts,'' in \textit{Proc. 6th Workshop on Computational Linguistics and Clinical Psychology (CLPsych)}, 2019, pp.~24--33.
+
+\bibitem{matero2019suicide}
+M.~Matero, A.~Idnani, Y.~Son, S.~Giorgi, H.~A. Schwartz, and S.~P. Ungar, ``Suicide risk assessment with multi-level dual-context language and BERT,'' in \textit{Proc. 6th Workshop on Computational Linguistics and Clinical Psychology (CLPsych)}, 2019, pp.~39--44.
+
+\bibitem{devlin2019bert}
+J.~Devlin, M.~W. Chang, K.~Lee, and K.~Toutanova, ``BERT: Pre-training of deep bidirectional transformers for language understanding,'' in \textit{Proc. NAACL-HLT}, 2019, pp.~4171--4186.
+
+\bibitem{liu2019roberta}
+Y.~Liu \textit{et al.}, ``RoBERTa: A robustly optimized BERT pretraining approach,'' \textit{arXiv preprint arXiv:1907.11692}, 2019.
+
+\bibitem{ji2022mentalbert}
+S.~Ji, T.~Zhang, L.~Ansari, J.~Fu, P.~Tiwari, and E.~Cambria, ``MentalBERT: Publicly available pretrained language models for mental healthcare,'' in \textit{Proc. LREC}, 2022, pp.~7184--7190.
+
+\bibitem{lin2017focal}
+T.-Y. Lin, P.~Goyal, R.~Girshick, K.~He, and P.~Doll\'{a}r, ``Focal loss for dense object detection,'' in \textit{Proc. IEEE ICCV}, 2017, pp.~2980--2988.
+
+\bibitem{cui2019class}
+Y.~Cui, M.~Jia, T.-Y. Lin, Y.~Song, and S.~Belongie, ``Class-balanced loss based on effective number of samples,'' in \textit{Proc. IEEE CVPR}, 2019, pp.~9268--9277.
+
+\bibitem{reimers2019sentencebert}
+N.~Reimers and I.~Gurevych, ``Sentence-BERT: Sentence embeddings using Siamese BERT-networks,'' in \textit{Proc. EMNLP-IJCNLP}, 2019, pp.~3982--3992.
+
+\bibitem{conneau2017supervised}
+A.~Conneau, D.~Kiela, H.~Schwenk, L.~Barrault, and A.~Bordes, ``Supervised learning of universal sentence representations from natural language inference data,'' in \textit{Proc. EMNLP}, 2017, pp.~670--680.
+
+\bibitem{guo2017calibration}
+C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q. Weinberger, ``On calibration of modern neural networks,'' in \textit{Proc. ICML}, 2017, pp.~1321--1330.
+
+\bibitem{sarkar2023dataset}
+S.~Sarkar, ``Sentiment analysis for mental health,'' \textit{Kaggle}, 2023. [Online]. Available: \url{https://www.kaggle.com/datasets/suchintikasarkar/sentiment-analysis-for-mental-health}
+
+\bibitem{sennrich2016improving}
+R.~Sennrich, B.~Haddow, and A.~Birch, ``Improving neural machine translation models with monolingual data,'' in \textit{Proc. ACL}, 2016, pp.~86--96.
+
+\bibitem{xie2020unsupervised}
+Q.~Xie, Z.~Dai, E.~Hovy, T.~Luong, and Q.~Le, ``Unsupervised data augmentation for consistency training,'' in \textit{Proc. NeurIPS}, vol.~33, 2020, pp.~6256--6268.
+
+\bibitem{hendrycks2016gelu}
+D.~Hendrycks and K.~Gimpel, ``Gaussian error linear units (GELUs),'' \textit{arXiv preprint arXiv:1606.08415}, 2016.
+
+\end{thebibliography}
+
+\end{document}

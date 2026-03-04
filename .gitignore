@@ -1,0 +1,72 @@
+# ── Virtual Environment ──
+env/
+venv/
+.venv/
+.env
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── Model Outputs & Weights ──
+output/
+*.pt
+*.pkl
+*.h5
+*.onnx
+*.bin
+
+# ── Data Files ──
+*.csv
+*.xlsx
+*.tsv
+
+# ── LaTeX Build Artifacts ──
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+
+# ── Compiled PDFs ──
+*.pdf
+
+# ── Images (generated) ──
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# ── Jupyter Notebooks ──
+.ipynb_checkpoints/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS Files ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Misc ──
+*.bak
+*.tmp
+training_log.txt
