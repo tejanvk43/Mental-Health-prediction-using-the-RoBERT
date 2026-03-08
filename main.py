@@ -50,8 +50,8 @@ warnings.filterwarnings("ignore")
 
 class CFG:
     # Paths
-    PRIMARY_DATA = "/teamspace/studios/this_studio/.cache/kagglehub/datasets/suchintikasarkar/sentiment-analysis-for-mental-health/versions/1/Combined Data.csv"
-    AUG_DATA     = "./augmented_data.csv"   # from back_translation.py
+    PRIMARY_DATA = "./data/Combined Data.csv"  # from augmented_dataset_creation.py
+    AUG_DATA     = "./data/augmented_data.csv"   # from back_translation.py
     OUT_DIR      = "./output"
 
     # Model
