@@ -727,7 +727,7 @@ def page_architecture(meta):
 
     # ── Pipeline diagram (image)
     st.markdown("### Processing Pipeline")
-    arch_img_path = os.path.join(BASE_DIR, "architecture_diagram.png")
+    arch_img_path = os.path.join(BASE_DIR, "architecture1.png")
     if os.path.exists(arch_img_path):
         st.image(arch_img_path, caption="RoBERTa-large Mental Health Classifier Pipeline", use_container_width=True)
     else:
@@ -1231,15 +1231,15 @@ def main():
         page_about(meta, classes)
 
     # ── Footer
-    st.markdown("---")
-    st.markdown(
-        "<p style='text-align:center; color:gray; font-size:0.85rem;'>"
-        "⚠️ This tool is for <strong>research and educational purposes only</strong>. "
-        "It is not a substitute for professional mental health assessment. "
-        "If you or someone you know is in crisis, please contact a mental health professional or crisis helpline."
-        "</p>",
-        unsafe_allow_html=True,
-    )
+    # st.markdown("---")
+    # st.markdown(
+    #     "<p style='text-align:center; color:gray; font-size:0.85rem;'>"
+    #     "⚠️ This tool is for <strong>research and educational purposes only</strong>. "
+    #     "It is not a substitute for professional mental health assessment. "
+    #     "If you or someone you know is in crisis, please contact a mental health professional or crisis helpline."
+    #     "</p>",
+    #     unsafe_allow_html=True,
+    # )
 
 
 if __name__ == "__main__":
